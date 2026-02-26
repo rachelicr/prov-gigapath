@@ -149,15 +149,21 @@ def run_inference_with_tile_encoder(image_paths: List[str], tile_encoder: torch.
     tile_encoder : torch.nn.Module
         Tile encoder model
     """
-    tile_encoder = tile_encoder.cuda()
+    # tile_encoder = tile_encoder.cuda()
     # make the tile dataloader
     tile_dl = DataLoader(TileEncodingDataset(image_paths, transform=load_tile_encoder_transforms()), batch_size=batch_size, shuffle=False)
     # run inference
     tile_encoder.eval()
     collated_outputs = {'tile_embeds': [], 'coords': []}
-    with torch.cuda.amp.autocast(dtype=torch.float16):
+    
+    if tile_encoder.device.type == 'cuda':
+        with torch.cuda.amp.autocast(dtype=torch.float16):
+            for batch in tqdm(tile_dl, desc='Running inference with tile encoder'):
+                collated_outputs['tile_embeds'].append(tile_encoder(batch['img'].to(tile_encoder.device)).detach().cpu())
+                collated_outputs['coords'].append(batch['coords'])
+    else:
         for batch in tqdm(tile_dl, desc='Running inference with tile encoder'):
-            collated_outputs['tile_embeds'].append(tile_encoder(batch['img'].cuda()).detach().cpu())
+            collated_outputs['tile_embeds'].append(tile_encoder(batch['img'].to(tile_encoder.device)).detach().cpu())
             collated_outputs['coords'].append(batch['coords'])
     return {k: torch.cat(v) for k, v in collated_outputs.items()}
 
@@ -180,11 +186,15 @@ def run_inference_with_slide_encoder(tile_embeds: torch.Tensor, coords: torch.Te
         tile_embeds = tile_embeds.unsqueeze(0)
         coords = coords.unsqueeze(0)
 
-    slide_encoder_model = slide_encoder_model.cuda()
+    # slide_encoder_model = slide_encoder_model.cuda()
     slide_encoder_model.eval()
     # run inference
-    with torch.cuda.amp.autocast(dtype=torch.float16):
-        slide_embeds = slide_encoder_model(tile_embeds.cuda(), coords.cuda(), all_layer_embed=True)
+    if slide_encoder_model.device.type == 'cuda':
+        with torch.cuda.amp.autocast(dtype=torch.float16):
+            slide_embeds = slide_encoder_model(tile_embeds.to(slide_encoder_model.device), coords.to(slide_encoder_model.device), all_layer_embed=True)
+    else:
+        slide_embeds = slide_encoder_model(tile_embeds.to(slide_encoder_model.device), coords.to(slide_encoder_model.device), all_layer_embed=True)
+    
     outputs = {"layer_{}_embed".format(i): slide_embeds[i].cpu() for i in range(len(slide_embeds))}
     outputs["last_layer_embed"] = slide_embeds[-1].cpu()
     return outputs
