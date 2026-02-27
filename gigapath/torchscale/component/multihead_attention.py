@@ -95,12 +95,26 @@ class MultiheadAttention(nn.Module):
             attn = torch.bmm(attn_probs, v)
             attn = rearrange(attn, '(b h) l d -> b l (h d)', h=self.num_heads)
         else:
-            assert flash_attn_func is not None
             assert rel_pos is None
             q = rearrange(q, '(b h) l d -> b l h d', h=self.num_heads)
             k = rearrange(k, '(b h) l d -> b l h d', h=self.num_heads)
             v = rearrange(v, '(b h) l d -> b l h d', h=self.num_heads)
-            attn, lse = flash_attn_func(q, k, v, self.dropout, attn_mask, None, is_causal)
+
+            if flash_attn_func is not None:
+                attn, lse = flash_attn_func(q, k, v, self.dropout, attn_mask, None, is_causal)
+            else:
+                # Fallback: flash-attn unavailable (e.g. incompatible GPU architecture).
+                # Compute standard scaled dot-product attention and derive lse manually
+                # so that the return format matches what the flash path produces.
+                scale = self.head_dim ** -0.5
+                # logits: b h l s
+                logits = torch.einsum('blhd,bshd->bhls', q * scale, k)
+                # lse: b h l  (log-sum-exp of logits over key dimension)
+                lse = torch.logsumexp(logits, dim=-1)
+                attn_probs = F.softmax(logits, dim=-1).to(q.dtype)
+                # attn: b l h d
+                attn = torch.einsum('bhls,bshd->blhd', attn_probs, v)
+
             attn = rearrange(attn, 'b l h d -> b l (h d)')
             attn_weights = lse[:, :, :attn.size(1)]
 
