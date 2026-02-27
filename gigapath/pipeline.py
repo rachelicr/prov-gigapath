@@ -117,6 +117,7 @@ def load_tile_encoder_transforms() -> transforms.Compose:
 
 def load_tile_slide_encoder(local_tile_encoder_path: str='',
                             local_slide_encoder_path: str='',
+                            local_dir: str=os.path.join(os.path.expanduser("~"), ".cache/"),
                             global_pool=False) -> Tuple[torch.nn.Module, torch.nn.Module]:
     """Load the GigaPath tile and slide encoder models.
     Note: Older versions of timm have compatibility issues.
@@ -129,9 +130,9 @@ def load_tile_slide_encoder(local_tile_encoder_path: str='',
     print("Tile encoder param #", sum(p.numel() for p in tile_encoder.parameters()))
 
     if local_slide_encoder_path:
-        slide_encoder_model = slide_encoder.create_model(local_slide_encoder_path, "gigapath_slide_enc12l768d", 1536, global_pool=global_pool)
+        slide_encoder_model = slide_encoder.create_model(local_slide_encoder_path, "gigapath_slide_enc12l768d", 1536, global_pool=global_pool, local_dir=local_dir)
     else:
-        slide_encoder_model = slide_encoder.create_model("hf_hub:prov-gigapath/prov-gigapath", "gigapath_slide_enc12l768d", 1536, global_pool=global_pool)
+        slide_encoder_model = slide_encoder.create_model("hf_hub:prov-gigapath/prov-gigapath", "gigapath_slide_enc12l768d", 1536, global_pool=global_pool, local_dir=local_dir)
     print("Slide encoder param #", sum(p.numel() for p in slide_encoder_model.parameters()))
 
     return tile_encoder, slide_encoder_model
