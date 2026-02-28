@@ -8,7 +8,8 @@ import torch
 
 if torch.cuda.is_available():
     try:
-        if torch.cuda.get_device_capability()[0] > 7 and torch.cuda.get_device_capability()[0] < 12:
+        sm = torch.cuda.get_device_capability()[0]
+        if sm > 7 and sm < 12:
             from einops import rearrange
             from flash_attn.bert_padding import pad_input, unpad_input
             from flash_attn.flash_attn_interface import flash_attn_func as _flash_attn_func
@@ -54,7 +55,7 @@ if torch.cuda.is_available():
                 return attn, lse
 
             print("\033[92mUsing Flash Attention 2\033[0m")
-        else:
+        elif sm <= 7:
             print("\033[91mWarning: Flash Attention 2 is not successfully loaded. Using XFormers instead.\033[0m")
             from xformers.ops.fmha import (
                 cutlass,
@@ -157,6 +158,8 @@ if torch.cuda.is_available():
                     return grads.dq, grads.dk, grads.dv, None, grads.db, None, None
 
             flash_attn_func = FlashAttnFunc.apply
+        else:
+            flash_attn_func = None
     except ModuleNotFoundError:
         flash_attn_func = None
 else:
