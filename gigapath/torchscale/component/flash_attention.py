@@ -7,7 +7,7 @@ import torch
 
 if torch.cuda.is_available():
     try:
-        if torch.cuda.get_device_capability()[0] > 7:
+        if torch.cuda.get_device_capability()[0] > 7 and torch.cuda.get_device_capability()[0] < 12:
             from flash_attn.flash_attn_interface import flash_attn_func as _flash_attn_func
 
             def flash_attn_func(q, k, v, dropout=0.0, bias=None, softmax_scale=None, is_causal=False):
@@ -115,7 +115,7 @@ if torch.cuda.is_available():
                         ctx=op_ctx, inp=inp, grad=grad, op=ctx.op_bw
                     )
                     return grads.dq, grads.dk, grads.dv, None, grads.db, None, None
-            
+
             flash_attn_func = FlashAttnFunc.apply
     except ModuleNotFoundError:
         flash_attn_func = None
