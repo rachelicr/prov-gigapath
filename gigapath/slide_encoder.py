@@ -79,24 +79,24 @@ class LongNetViT(nn.Module):
         The drop path rate used in the model.
     """
 
-    def __init__(self, 
-                in_chans=1536, 
-                embed_dim=256, 
-                depth=12, 
-                slide_ngrids=1000, 
+    def __init__(self,
+                in_chans=1536,
+                embed_dim=256,
+                depth=12,
+                slide_ngrids=1000,
                 tile_size=256,
                 max_wsi_size=262144,
-                norm_layer=nn.LayerNorm, 
-                global_pool=False, 
-                dropout=0.25, 
-                drop_path_rate=0.1, 
+                norm_layer=nn.LayerNorm,
+                global_pool=False,
+                dropout=0.25,
+                drop_path_rate=0.1,
                 **kwargs):
         super().__init__()
 
         # --------------------------------------------------------------------------
         # MAE encoder specifics
         self.patch_embed = PatchEmbed(in_chans, embed_dim)
-        
+
         self.tile_size = tile_size
         self.slide_ngrids = slide_ngrids
         num_patches = slide_ngrids**2
@@ -106,7 +106,7 @@ class LongNetViT(nn.Module):
         self.encoder_name = "LongNet_{}_layers_{}_dim".format(depth, embed_dim)
         if kwargs.get("mlp_ratio", 4.0) != 4.0:
             self.encoder_name += "_mlp{}".format(kwargs.get("mlp_ratio"))
-        
+
         # get optimal segment length
         segment_length = self.get_optimal_segment_length(max_wsi_size, tile_size)
         self.encoder = make_longnet_from_name(self.encoder_name, drop_path_rate=drop_path_rate, dropout=dropout, segment_length=segment_length)
@@ -137,7 +137,7 @@ class LongNetViT(nn.Module):
     def get_optimal_segment_length(self, max_wsi_size: int=262144, tile_size: int=256) -> str:
         '''
         Get the optimal segment length based on the maximum image size and tile size.
-        
+
         Arguments:
         ----------
         max_wsi_size: int
@@ -228,7 +228,7 @@ def create_model(pretrained: str, model_arch: str, in_chans: int, local_dir: str
 
     if pretrained.startswith("hf_hub:"):
         hub_name = pretrained.split(":")[1]
-        huggingface_hub.hf_hub_download(hub_name, filename="slide_encoder.pth", local_dir=local_dir, force_download=True)
+        huggingface_hub.hf_hub_download(hub_name, filename="slide_encoder.pth", local_dir=local_dir, force_download=False)
         local_path = os.path.join(local_dir, "slide_encoder.pth")
     else:
         local_path = pretrained
