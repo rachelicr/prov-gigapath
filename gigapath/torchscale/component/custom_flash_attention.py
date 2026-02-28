@@ -4,17 +4,17 @@
 
 from typing import Any, Optional
 import torch
-        
+
 
 if torch.cuda.is_available():
     try:
-        if torch.cuda.get_device_capability()[0] > 7:
+        if torch.cuda.get_device_capability()[0] > 7 and torch.cuda.get_device_capability()[0] < 12:
             from einops import rearrange
             from flash_attn.bert_padding import pad_input, unpad_input
             from flash_attn.flash_attn_interface import flash_attn_func as _flash_attn_func
             from flash_attn.flash_attn_interface import flash_attn_varlen_func as _flash_attn_varlen_func
             from flash_attn.flash_attn_interface import flash_attn_varlen_qkvpacked_func as _flash_attn_varlen_qkvpacked_func
-            
+
             '''
             The official implementation of using Flash Attention 2 in LongNet
             '''
@@ -45,14 +45,14 @@ if torch.cuda.is_available():
                           'cu_seqlens': cu_seqlens, 'max_seqlen': max_s,
                           'dropout_p': dropout, 'softmax_scale': softmax_scale}
                     torch.save(state_dict, 'nan_repro.pt')
-                
+
                 return output, lse
-            
+
             def flash_attn_func(q, k, v, dropout=0.0, bias=None, softmax_scale=None, is_causal=False):
                 assert bias is None
                 attn, lse, _ = _flash_attn_func(q, k, v, dropout_p=dropout, softmax_scale=softmax_scale, causal=is_causal, return_attn_probs=True)
                 return attn, lse
-            
+
             print("\033[92mUsing Flash Attention 2\033[0m")
         else:
             print("\033[91mWarning: Flash Attention 2 is not successfully loaded. Using XFormers instead.\033[0m")
@@ -155,7 +155,7 @@ if torch.cuda.is_available():
                         ctx=op_ctx, inp=inp, grad=grad, op=ctx.op_bw
                     )
                     return grads.dq, grads.dk, grads.dv, None, grads.db, None, None
-            
+
             flash_attn_func = FlashAttnFunc.apply
     except ModuleNotFoundError:
         flash_attn_func = None
