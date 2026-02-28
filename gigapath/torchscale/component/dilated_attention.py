@@ -24,7 +24,7 @@ class DilatedAttention(MultiheadAttention):
         x = rearrange(x, 'b (l r1) (r2 h) d -> b l h d r1 r2', r1=ratio, r2=ratio)
         x = torch.diagonal(x, offset=0, dim1=4, dim2=5)
         x = rearrange(x, 'b l h d r -> b l (r h) d')
-        
+
         if head_padding > 0:
             x = x[:, :, :self.num_heads]
 
@@ -60,19 +60,19 @@ class DilatedAttention(MultiheadAttention):
         x = all_gather_func(x)
         current_rank = get_data_parallel_rank()
         x = rearrange(x, '(w b) l h d -> w b l h d', b=bsz)
-        
+
         if is_causal:
             if current_rank > 0:
                 x = x[:current_rank]
             else:
                 x = x[:1] * 0
-        
+
         current_segment = current_rank // num_rank_per_segment * num_rank_per_segment
         x = x[current_segment:current_segment+num_rank_per_segment]
 
         x = rearrange(x, 'w b l h d -> b (w l) h d')
         return x
-    
+
     def gathering(self, x, dr, sl, is_causal=True, offset=0, is_kv=False, seq_parall=True):
 
         curr_x = x
@@ -94,7 +94,7 @@ class DilatedAttention(MultiheadAttention):
             curr_x = self.gather_kv(curr_x, _sl, seq_len, is_causal)
 
         curr_x = rearrange(curr_x, 'b l h d -> (b h) l d')
-        
+
         return curr_x
 
     def scattering(self, outs, lses, seq_len, bsz, offset=0):
@@ -142,7 +142,9 @@ class DilatedAttention(MultiheadAttention):
         is_first_step=False,
         is_causal=False,
     ):
-        assert self.args.flash_attention
+        # Removed: assert self.args.flash_attention
+        # The fallback in attention_ops handles the case where flash_attn is
+        # unavailable (e.g. incompatible GPU architecture such as Blackwell sm120).
         assert rel_pos is None
         bsz, tgt_len, embed_dim = query.size()
         src_len = tgt_len
@@ -191,7 +193,7 @@ class DilatedAttention(MultiheadAttention):
                 offset = 0
             k = self.xpos(k, offset=0, downscale=True)
             q = self.xpos(q, offset=offset, downscale=False)
-        
+
         q = rearrange(q, '(b h) l d -> b l h d', h=self.num_heads)
         k = rearrange(k, '(b h) l d -> b l h d', h=self.num_heads)
         v = rearrange(v, '(b h) l d -> b l h d', h=self.num_heads)

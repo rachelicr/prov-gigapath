@@ -117,6 +117,7 @@ def load_tile_encoder_transforms() -> transforms.Compose:
 
 def load_tile_slide_encoder(local_tile_encoder_path: str='',
                             local_slide_encoder_path: str='',
+                            local_dir: str=os.path.join(os.path.expanduser("~"), ".cache/"),
                             global_pool=False) -> Tuple[torch.nn.Module, torch.nn.Module]:
     """Load the GigaPath tile and slide encoder models.
     Note: Older versions of timm have compatibility issues.
@@ -129,9 +130,9 @@ def load_tile_slide_encoder(local_tile_encoder_path: str='',
     print("Tile encoder param #", sum(p.numel() for p in tile_encoder.parameters()))
 
     if local_slide_encoder_path:
-        slide_encoder_model = slide_encoder.create_model(local_slide_encoder_path, "gigapath_slide_enc12l768d", 1536, global_pool=global_pool)
+        slide_encoder_model = slide_encoder.create_model(local_slide_encoder_path, "gigapath_slide_enc12l768d", 1536, global_pool=global_pool, local_dir=local_dir)
     else:
-        slide_encoder_model = slide_encoder.create_model("hf_hub:prov-gigapath/prov-gigapath", "gigapath_slide_enc12l768d", 1536, global_pool=global_pool)
+        slide_encoder_model = slide_encoder.create_model("hf_hub:prov-gigapath/prov-gigapath", "gigapath_slide_enc12l768d", 1536, global_pool=global_pool, local_dir=local_dir)
     print("Slide encoder param #", sum(p.numel() for p in slide_encoder_model.parameters()))
 
     return tile_encoder, slide_encoder_model
@@ -149,15 +150,22 @@ def run_inference_with_tile_encoder(image_paths: List[str], tile_encoder: torch.
     tile_encoder : torch.nn.Module
         Tile encoder model
     """
-    tile_encoder = tile_encoder.cuda()
     # make the tile dataloader
     tile_dl = DataLoader(TileEncodingDataset(image_paths, transform=load_tile_encoder_transforms()), batch_size=batch_size, shuffle=False)
     # run inference
     tile_encoder.eval()
     collated_outputs = {'tile_embeds': [], 'coords': []}
-    with torch.cuda.amp.autocast(dtype=torch.float16):
+
+    device = next(tile_encoder.parameters()).device  # get device once
+
+    if device.type == 'cuda':
+        with torch.cuda.amp.autocast(dtype=torch.float16):
+            for batch in tqdm(tile_dl, desc='Running inference with tile encoder'):
+                collated_outputs['tile_embeds'].append(tile_encoder(batch['img'].to(device)).detach().cpu())
+                collated_outputs['coords'].append(batch['coords'])
+    else:
         for batch in tqdm(tile_dl, desc='Running inference with tile encoder'):
-            collated_outputs['tile_embeds'].append(tile_encoder(batch['img'].cuda()).detach().cpu())
+            collated_outputs['tile_embeds'].append(tile_encoder(batch['img'].to(device)).detach().cpu())
             collated_outputs['coords'].append(batch['coords'])
     return {k: torch.cat(v) for k, v in collated_outputs.items()}
 
@@ -180,11 +188,16 @@ def run_inference_with_slide_encoder(tile_embeds: torch.Tensor, coords: torch.Te
         tile_embeds = tile_embeds.unsqueeze(0)
         coords = coords.unsqueeze(0)
 
-    slide_encoder_model = slide_encoder_model.cuda()
     slide_encoder_model.eval()
+    device = next(slide_encoder_model.parameters()).device  # get device once
+
     # run inference
-    with torch.cuda.amp.autocast(dtype=torch.float16):
-        slide_embeds = slide_encoder_model(tile_embeds.cuda(), coords.cuda(), all_layer_embed=True)
+    if device.type == 'cuda':
+        with torch.cuda.amp.autocast(dtype=torch.float16):
+            slide_embeds = slide_encoder_model(tile_embeds.to(device), coords.to(device), all_layer_embed=True)
+    else:
+        slide_embeds = slide_encoder_model(tile_embeds.to(device), coords.to(device), all_layer_embed=True)
+
     outputs = {"layer_{}_embed".format(i): slide_embeds[i].cpu() for i in range(len(slide_embeds))}
     outputs["last_layer_embed"] = slide_embeds[-1].cpu()
     return outputs
